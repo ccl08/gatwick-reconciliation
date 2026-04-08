@@ -1,5 +1,6 @@
 credentials.json
-output_march2026.csv
+output_*.csv
 runs.log
 __pycache__/
 .pytest_cache/
+*.pyc
