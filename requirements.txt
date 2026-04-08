@@ -1,0 +1,6 @@
+flask>=3.0
+gunicorn>=21.0
+google-cloud-bigquery>=3.0
+gspread>=6.0
+google-auth>=2.0
+pandas>=2.0

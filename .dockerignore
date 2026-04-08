@@ -1,0 +1,8 @@
+credentials.json
+*.log
+*.csv
+__pycache__/
+.pytest_cache/
+tests/
+.gitignore
+README.md

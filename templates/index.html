@@ -1,0 +1,813 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Rakuten & Gatwick Reconciliation</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #ffffff;
+      color: #2d3748;
+      min-height: 100vh;
+    }
+
+    header {
+      background: #0a0f1e;
+      color: white;
+      padding: 16px 32px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+    header img { height: 36px; width: auto; flex-shrink: 0; }
+    header h1 { font-size: 18px; font-weight: 600; }
+    header p { font-size: 13px; color: #7a8baa; }
+
+    .container { max-width: 960px; margin: 0 auto; padding: 32px 24px; }
+
+    .card {
+      background: white;
+      border-radius: 10px;
+      border: 1px solid #e2e8f0;
+      padding: 24px;
+      margin-bottom: 24px;
+    }
+    .card h2 {
+      font-size: 15px;
+      font-weight: 600;
+      margin-bottom: 16px;
+      color: #0a0f1e;
+    }
+
+    label { font-size: 13px; font-weight: 500; color: #4a5568; display: block; margin-bottom: 6px; }
+
+    textarea {
+      width: 100%;
+      min-height: 180px;
+      border: 1px solid #cbd5e0;
+      border-radius: 6px;
+      padding: 12px;
+      font-family: "SF Mono", "Fira Code", monospace;
+      font-size: 12px;
+      resize: vertical;
+      color: #2d3748;
+      transition: border-color .2s;
+    }
+    textarea:focus { outline: none; border-color: #00c8ff; }
+
+    .mode-tabs { display: flex; gap: 8px; margin-bottom: 12px; }
+    .mode-tab {
+      padding: 6px 14px;
+      border-radius: 20px;
+      border: 1px solid #cbd5e0;
+      font-size: 12px;
+      cursor: pointer;
+      background: white;
+      color: #4a5568;
+      transition: all .15s;
+    }
+    .mode-tab.active { background: #e6faff; border-color: #00c8ff; color: #0066ff; font-weight: 500; }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 20px;
+      border-radius: 6px;
+      border: none;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all .15s;
+    }
+    .btn-primary { background: #0066ff; color: white; }
+    .btn-primary:hover { background: #004fcc; }
+    .btn-primary:disabled { background: #a0aec0; cursor: not-allowed; }
+    .btn-secondary { background: #edf2f7; color: #4a5568; }
+    .btn-secondary:hover { background: #e2e8f0; }
+    .btn-green { background: #38a169; color: white; }
+    .btn-green:hover { background: #2f855a; }
+    .btn-green:disabled { background: #a0aec0; cursor: not-allowed; }
+
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+    .summary-item {
+      border-radius: 8px;
+      padding: 16px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .summary-item.clean { background: #f0fff4; border: 1px solid #9ae6b4; }
+    .summary-item.fixed { background: #fffbeb; border: 1px solid #f6e05e; }
+    .summary-item.flagged { background: #fff5f5; border: 1px solid #fed7d7; }
+    .summary-icon { font-size: 22px; }
+    .summary-label { font-size: 12px; color: #718096; }
+    .summary-count { font-size: 22px; font-weight: 700; }
+    .summary-item.clean .summary-count { color: #276749; }
+    .summary-item.fixed .summary-count { color: #744210; }
+    .summary-item.flagged .summary-count { color: #9b2c2c; }
+
+    .detail-section { margin-top: 16px; }
+    .detail-section summary {
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 500;
+      color: #4a5568;
+      padding: 8px 0;
+      user-select: none;
+    }
+    .detail-section summary:hover { color: #2d3748; }
+
+    table { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 8px; }
+    th { text-align: left; padding: 8px 10px; background: #f7fafc; border-bottom: 1px solid #e2e8f0; font-weight: 600; color: #4a5568; }
+    td { padding: 7px 10px; border-bottom: 1px solid #edf2f7; color: #2d3748; }
+    tr:last-child td { border-bottom: none; }
+
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-size: 11px;
+      font-weight: 500;
+    }
+    .badge-clean { background: #c6f6d5; color: #276749; }
+    .badge-fixed { background: #fefcbf; color: #744210; }
+    .badge-flagged { background: #fed7d7; color: #9b2c2c; }
+    .badge-manual { background: #e9d8fd; color: #553c9a; }
+    .badge-matched { background: #c6f6d5; color: #276749; }
+    .badge-unmatched { background: #fed7d7; color: #9b2c2c; }
+
+    .date-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px; }
+    .field-group { display: flex; flex-direction: column; gap: 6px; }
+    input[type="date"] {
+      border: 1px solid #cbd5e0;
+      border-radius: 6px;
+      padding: 8px 12px;
+      font-size: 13px;
+      color: #2d3748;
+    }
+    input[type="date"]:focus { outline: none; border-color: #00c8ff; }
+    input[type="text"] {
+      border: 1px solid #cbd5e0;
+      border-radius: 6px;
+      padding: 7px 10px;
+      font-size: 12px;
+      font-family: "SF Mono", monospace;
+      color: #2d3748;
+      width: 100%;
+    }
+    input[type="text"]:focus { outline: none; border-color: #805ad5; }
+    input[type="text"].corrected { border-color: #805ad5; background: #faf5ff; }
+
+    .alert {
+      padding: 12px 16px;
+      border-radius: 6px;
+      font-size: 13px;
+      margin-bottom: 16px;
+    }
+    .alert-warn { background: #fffbeb; border: 1px solid #f6e05e; color: #744210; }
+    .alert-error { background: #fff5f5; border: 1px solid #feb2b2; color: #9b2c2c; }
+    .alert-info { background: #e6faff; border: 1px solid #80e0ff; color: #0066ff; }
+    .alert-success { background: #f0fff4; border: 1px solid #9ae6b4; color: #276749; }
+
+    .spinner {
+      display: inline-block;
+      width: 16px; height: 16px;
+      border: 2px solid rgba(255,255,255,.4);
+      border-top-color: white;
+      border-radius: 50%;
+      animation: spin .6s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .step-indicator {
+      display: flex;
+      gap: 0;
+      margin-bottom: 32px;
+    }
+    .step {
+      flex: 1;
+      text-align: center;
+      padding: 10px;
+      font-size: 12px;
+      font-weight: 500;
+      color: #a0aec0;
+      border-bottom: 3px solid #e2e8f0;
+      position: relative;
+    }
+    .step.active { color: #0066ff; border-bottom-color: #0066ff; }
+    .step.done { color: #38a169; border-bottom-color: #38a169; }
+
+    .result-stats {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 16px;
+      margin-bottom: 20px;
+    }
+    .result-stat {
+      background: #f7fafc;
+      border-radius: 8px;
+      padding: 16px;
+      text-align: center;
+    }
+    .result-stat .val { font-size: 32px; font-weight: 700; }
+    .result-stat .lbl { font-size: 12px; color: #718096; margin-top: 4px; }
+    .result-stat.matched .val { color: #276749; }
+    .result-stat.unmatched .val { color: #9b2c2c; }
+
+    .hidden { display: none !important; }
+
+    .actions { display: flex; gap: 12px; align-items: center; margin-top: 16px; flex-wrap: wrap; }
+
+    .file-drop {
+      border: 2px dashed #cbd5e0;
+      border-radius: 8px;
+      padding: 20px;
+      text-align: center;
+      color: #718096;
+      font-size: 13px;
+      cursor: pointer;
+      margin-bottom: 12px;
+      transition: all .2s;
+    }
+    .file-drop:hover, .file-drop.dragover {
+      border-color: #00c8ff;
+      background: #e6faff;
+      color: #0066ff;
+    }
+    .file-drop input { display: none; }
+  </style>
+</head>
+<body>
+
+<header>
+  <!-- Adapt Worldwide inline logo — no external URLs -->
+  <svg width="36" height="36" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0;border-radius:6px;">
+    <rect width="36" height="36" fill="#00c8a0"/>
+    <polygon points="36,0 36,36 0,36" fill="#00a878"/>
+  </svg>
+  <div>
+    <div style="display:flex;align-items:baseline;gap:6px;">
+      <span style="font-size:20px;font-weight:700;color:white;letter-spacing:-0.3px;">adapt</span>
+    </div>
+    <h1>Rakuten &amp; Gatwick Reconciliation</h1>
+    <p>Powered by Adapt Worldwide</p>
+  </div>
+</header>
+
+<div class="container">
+
+  <!-- Step indicator -->
+  <div class="step-indicator">
+    <div class="step active" id="step1">1 · Paste Data</div>
+    <div class="step" id="step2">2 · Review & Clean</div>
+    <div class="step" id="step3">3 · Results</div>
+  </div>
+
+  <!-- STEP 1: Input -->
+  <div id="panel-input">
+
+    <div class="card">
+      <h2>Upload or paste Rakuten inquiry data</h2>
+
+      <div class="file-drop" id="file-drop" onclick="document.getElementById('file-input').click()">
+        <input type="file" id="file-input" accept=".csv,.tsv,.txt">
+        <div>Drop a CSV / TSV file here or <strong>click to browse</strong></div>
+        <div style="font-size:11px;margin-top:4px;color:#a0aec0">Accepted: .csv .tsv .txt</div>
+      </div>
+
+      <div class="mode-tabs">
+        <button class="mode-tab active" data-mode="auto">Auto-detect</button>
+        <button class="mode-tab" data-mode="tsv">Tab/CSV sheet</button>
+        <button class="mode-tab" data-mode="raw_ids">Raw IDs only</button>
+      </div>
+
+      <label for="raw-input">Paste data (tab-separated sheet or raw IDs, one per line)</label>
+      <textarea id="raw-input" placeholder="Paste here… e.g.
+GHP-DW-1662491
+LGW-DW-11176152ANN
+DW09926523ZAN_1
+DFP183373420"></textarea>
+
+      <div class="actions">
+        <button class="btn btn-primary" id="btn-preview">
+          Preview &amp; clean IDs
+        </button>
+        <span id="preview-error" class="alert alert-error hidden" style="margin:0;padding:8px 12px;"></span>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- STEP 2: Preview & clean -->
+  <div id="panel-preview" class="hidden">
+
+    <div class="card">
+      <h2>Cleaning summary</h2>
+
+      <div class="summary-grid">
+        <div class="summary-item clean">
+          <span class="summary-icon">&#10003;</span>
+          <div>
+            <div class="summary-count" id="count-clean">0</div>
+            <div class="summary-label">Clean (no changes)</div>
+          </div>
+        </div>
+        <div class="summary-item fixed">
+          <span class="summary-icon">&#9888;</span>
+          <div>
+            <div class="summary-count" id="count-fixed">0</div>
+            <div class="summary-label">Auto-fixed</div>
+          </div>
+        </div>
+        <div class="summary-item flagged">
+          <span class="summary-icon">&#10060;</span>
+          <div>
+            <div class="summary-count" id="count-flagged">0</div>
+            <div class="summary-label">Flagged — review needed</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Auto-fixed detail -->
+      <details class="detail-section" id="detail-fixed">
+        <summary>Auto-fixed IDs &#9660;</summary>
+        <table id="table-fixed">
+          <thead><tr><th>Original</th><th>Cleaned</th><th>Note</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </details>
+
+      <!-- Flagged IDs — editable -->
+      <details class="detail-section" id="detail-flagged" open>
+        <summary>Flagged IDs — correct before submitting &#9660;</summary>
+        <div id="alert-flagged" class="alert alert-warn" style="margin-top:12px;">
+          These IDs have an unrecognised format. Edit the corrected value or leave blank to exclude them from the run.
+        </div>
+        <table id="table-flagged">
+          <thead><tr><th>Original</th><th>Note</th><th>Corrected ID (edit if needed)</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </details>
+
+    </div>
+
+    <!-- Date range -->
+    <div class="card">
+      <h2>Date range</h2>
+
+      <div id="date-auto-info" class="alert alert-info hidden">
+        Detected from Transaction Date column.
+      </div>
+      <div id="date-missing-warn" class="alert alert-warn hidden">
+        Transaction Date column not found or empty — please enter the date range manually.
+      </div>
+
+      <div class="date-row">
+        <div class="field-group">
+          <label for="date-from">From (Transaction Date)</label>
+          <input type="date" id="date-from">
+        </div>
+        <div class="field-group">
+          <label for="date-to">To (Transaction Date)</label>
+          <input type="date" id="date-to">
+        </div>
+      </div>
+    </div>
+
+    <div class="actions">
+      <button class="btn btn-secondary" id="btn-back">&#8592; Back</button>
+      <button class="btn btn-green" id="btn-submit" disabled>
+        Run reconciliation
+      </button>
+      <span id="submit-error" class="alert alert-error hidden" style="margin:0;padding:8px 12px;"></span>
+    </div>
+
+  </div>
+
+  <!-- STEP 3: Results -->
+  <div id="panel-results" class="hidden">
+
+    <div class="card">
+      <h2>Reconciliation complete</h2>
+
+      <div id="result-success-msg" class="alert alert-success hidden"></div>
+      <div id="result-warn-msg" class="alert alert-warn hidden"></div>
+      <div id="result-error-msg" class="alert alert-error hidden"></div>
+
+      <div class="result-stats">
+        <div class="result-stat matched">
+          <div class="val" id="res-matched">—</div>
+          <div class="lbl">Matched transactions</div>
+        </div>
+        <div class="result-stat unmatched">
+          <div class="val" id="res-unmatched">—</div>
+          <div class="lbl">Unmatched</div>
+        </div>
+      </div>
+
+      <div id="res-meta" style="font-size:13px;color:#718096;margin-bottom:16px;"></div>
+
+      <!-- Matched rows preview -->
+      <details class="detail-section" id="detail-results">
+        <summary>Matched rows preview &#9660;</summary>
+        <table id="table-results">
+          <thead>
+            <tr>
+              <th>Source</th>
+              <th>Transaction ID</th>
+              <th>Event Date</th>
+              <th>Entry Date</th>
+              <th>Item ID</th>
+              <th>Item Name</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </details>
+
+      <div class="actions" style="margin-top:20px;">
+        <button class="btn btn-secondary" id="btn-new-run">New run</button>
+        <a id="btn-open-sheet" class="btn btn-green hidden" target="_blank" rel="noopener noreferrer">
+          Open in Google Sheets &#8599;
+        </a>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Loading overlay (inline, not blocking entire page) -->
+  <div id="loading-card" class="card hidden" style="text-align:center;padding:40px;">
+    <div style="margin-bottom:16px;">
+      <div style="display:inline-block;width:40px;height:40px;border:4px solid #e2e8f0;border-top-color:#0066ff;border-radius:50%;animation:spin .8s linear infinite;"></div>
+    </div>
+    <div id="loading-msg" style="font-size:14px;color:#4a5568;">Processing…</div>
+  </div>
+
+</div>
+
+<script>
+  // -------------------------------------------------------------------------
+  // State
+  // -------------------------------------------------------------------------
+  let previewData = null;   // full response from /api/preview
+  let inputMode = 'auto';
+
+  // -------------------------------------------------------------------------
+  // Utility
+  // -------------------------------------------------------------------------
+  function show(id) { document.getElementById(id).classList.remove('hidden'); }
+  function hide(id) { document.getElementById(id).classList.add('hidden'); }
+  function text(id, val) { document.getElementById(id).textContent = val; }
+
+  function setStep(n) {
+    [1,2,3].forEach(i => {
+      const el = document.getElementById('step' + i);
+      el.classList.remove('active', 'done');
+      if (i < n) el.classList.add('done');
+      else if (i === n) el.classList.add('active');
+    });
+  }
+
+  function yyyymmddToInput(s) {
+    // Convert YYYYMMDD → YYYY-MM-DD for <input type="date">
+    if (!s || s.length !== 8) return '';
+    return s.slice(0,4) + '-' + s.slice(4,6) + '-' + s.slice(6,8);
+  }
+
+  function inputToYyyymmdd(s) {
+    // Convert YYYY-MM-DD → YYYYMMDD
+    return s.replace(/-/g, '');
+  }
+
+  // -------------------------------------------------------------------------
+  // Input mode tabs
+  // -------------------------------------------------------------------------
+  document.querySelectorAll('.mode-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.mode-tab').forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      inputMode = tab.dataset.mode;
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // File drop / upload
+  // -------------------------------------------------------------------------
+  const fileDrop = document.getElementById('file-drop');
+  const fileInput = document.getElementById('file-input');
+
+  ['dragover','dragleave','drop'].forEach(evt => {
+    fileDrop.addEventListener(evt, e => {
+      e.preventDefault();
+      fileDrop.classList.toggle('dragover', evt === 'dragover');
+      if (evt === 'drop') handleFile(e.dataTransfer.files[0]);
+    });
+  });
+
+  fileInput.addEventListener('change', () => {
+    if (fileInput.files[0]) handleFile(fileInput.files[0]);
+  });
+
+  function handleFile(file) {
+    const reader = new FileReader();
+    reader.onload = e => {
+      document.getElementById('raw-input').value = e.target.result;
+      // Auto-select TSV mode for CSV files
+      if (file.name.endsWith('.csv') || file.name.endsWith('.tsv')) {
+        document.querySelectorAll('.mode-tab').forEach(t => {
+          t.classList.toggle('active', t.dataset.mode === 'tsv');
+        });
+        inputMode = 'tsv';
+      }
+    };
+    reader.readAsText(file);
+  }
+
+  // -------------------------------------------------------------------------
+  // Step 1 → 2: Preview
+  // -------------------------------------------------------------------------
+  document.getElementById('btn-preview').addEventListener('click', async () => {
+    const rawText = document.getElementById('raw-input').value.trim();
+    if (!rawText) {
+      showInlineError('preview-error', 'Please paste some data first.');
+      return;
+    }
+    hide('preview-error');
+
+    // Show loading
+    hide('panel-input');
+    show('loading-card');
+    text('loading-msg', 'Parsing and cleaning IDs…');
+
+    try {
+      const resp = await fetch('/api/preview', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ raw_text: rawText, input_mode: inputMode }),
+      });
+      const data = await resp.json();
+      hide('loading-card');
+
+      if (!resp.ok) {
+        show('panel-input');
+        showInlineError('preview-error', data.error || 'Preview failed');
+        return;
+      }
+
+      previewData = data;
+      renderPreview(data);
+      show('panel-preview');
+      setStep(2);
+
+    } catch (err) {
+      hide('loading-card');
+      show('panel-input');
+      showInlineError('preview-error', 'Network error: ' + err.message);
+    }
+  });
+
+  function showInlineError(id, msg) {
+    const el = document.getElementById(id);
+    el.textContent = msg;
+    el.classList.remove('hidden');
+  }
+
+  function renderPreview(data) {
+    text('count-clean', data.summary.clean);
+    text('count-fixed', data.summary.auto_fixed);
+    text('count-flagged', data.summary.flagged);
+
+    // Auto-fixed table
+    const fixedTbody = document.querySelector('#table-fixed tbody');
+    fixedTbody.innerHTML = '';
+    if (data.auto_fixed_items.length === 0) {
+      hide('detail-fixed');
+    } else {
+      show('detail-fixed');
+      data.auto_fixed_items.forEach(item => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td><code>${esc(item.original)}</code></td>
+                        <td><code>${esc(item.cleaned)}</code></td>
+                        <td>${esc(item.note)}</td>`;
+        fixedTbody.appendChild(tr);
+      });
+    }
+
+    // Flagged table — editable inputs
+    const flaggedTbody = document.querySelector('#table-flagged tbody');
+    flaggedTbody.innerHTML = '';
+    if (data.flagged_items.length === 0) {
+      hide('detail-flagged');
+      hide('alert-flagged');
+    } else {
+      show('detail-flagged');
+      show('alert-flagged');
+      data.flagged_items.forEach(item => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td><code>${esc(item.original)}</code></td>
+                        <td>${esc(item.note)}</td>
+                        <td><input type="text" class="override-input" data-original="${esc(item.original)}"
+                             placeholder="Enter corrected ID or leave blank to skip"></td>`;
+        flaggedTbody.appendChild(tr);
+      });
+    }
+
+    // Dates
+    if (data.needs_manual_dates) {
+      hide('date-auto-info');
+      show('date-missing-warn');
+    } else {
+      show('date-auto-info');
+      hide('date-missing-warn');
+      document.getElementById('date-from').value = yyyymmddToInput(data.date_from);
+      document.getElementById('date-to').value = yyyymmddToInput(data.date_to);
+    }
+
+    // Enable submit once dates are filled
+    checkSubmitReady();
+  }
+
+  function checkSubmitReady() {
+    const fromVal = document.getElementById('date-from').value;
+    const toVal = document.getElementById('date-to').value;
+    document.getElementById('btn-submit').disabled = !(fromVal && toVal);
+  }
+
+  document.getElementById('date-from').addEventListener('change', checkSubmitReady);
+  document.getElementById('date-to').addEventListener('change', checkSubmitReady);
+
+  // -------------------------------------------------------------------------
+  // Back button
+  // -------------------------------------------------------------------------
+  document.getElementById('btn-back').addEventListener('click', () => {
+    hide('panel-preview');
+    show('panel-input');
+    setStep(1);
+  });
+
+  // -------------------------------------------------------------------------
+  // Step 2 → 3: Submit
+  // -------------------------------------------------------------------------
+  document.getElementById('btn-submit').addEventListener('click', async () => {
+    if (!previewData) return;
+
+    hide('submit-error');
+
+    const dateFrom = inputToYyyymmdd(document.getElementById('date-from').value);
+    const dateTo   = inputToYyyymmdd(document.getElementById('date-to').value);
+
+    if (!dateFrom || !dateTo) {
+      showInlineError('submit-error', 'Please fill in both date fields.');
+      return;
+    }
+
+    // Collect manual overrides
+    const overrides = {};
+    document.querySelectorAll('.override-input').forEach(input => {
+      const orig = input.dataset.original;
+      const val = input.value.trim();
+      if (val) overrides[orig] = val;
+    });
+
+    hide('panel-preview');
+    show('loading-card');
+    text('loading-msg', 'Pushing IDs to BigQuery…');
+
+    // Simulate progress messages
+    const steps = [
+      'Pushing IDs to BigQuery…',
+      'Running reconciliation against GHP table…',
+      'Running reconciliation against Main site table…',
+      'Writing results to Google Sheets…',
+    ];
+    let stepIdx = 0;
+    const progressInterval = setInterval(() => {
+      stepIdx = Math.min(stepIdx + 1, steps.length - 1);
+      text('loading-msg', steps[stepIdx]);
+    }, 3000);
+
+    try {
+      const resp = await fetch('/api/submit', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          rows: previewData.rows,
+          date_from: dateFrom,
+          date_to: dateTo,
+          manual_overrides: overrides,
+        }),
+      });
+      clearInterval(progressInterval);
+      hide('loading-card');
+
+      const data = await resp.json();
+
+      if (!resp.ok) {
+        show('panel-preview');
+        showInlineError('submit-error', data.error || 'Submission failed');
+        return;
+      }
+
+      renderResults(data);
+      show('panel-results');
+      setStep(3);
+
+    } catch (err) {
+      clearInterval(progressInterval);
+      hide('loading-card');
+      show('panel-preview');
+      showInlineError('submit-error', 'Network error: ' + err.message);
+    }
+  });
+
+  function renderResults(data) {
+    text('res-matched', data.matched);
+    text('res-unmatched', data.unmatched);
+
+    text('res-meta',
+      `Submitted ${data.submitted} IDs · BQ table: ${data.bq_table}` +
+      (data.tab_name ? ` · Sheet tab: ${data.tab_name}` : '')
+    );
+
+    if (data.tab_name) {
+      const el = document.getElementById('result-success-msg');
+      el.textContent = `Results written to Google Sheets tab: ${data.tab_name}`;
+      el.classList.remove('hidden');
+    }
+
+    if (data.sheets_warning) {
+      const el = document.getElementById('result-warn-msg');
+      el.textContent = `Sheets write warning: ${data.sheets_warning}`;
+      el.classList.remove('hidden');
+    }
+
+    // Populate matched rows table
+    const tbody = document.querySelector('#table-results tbody');
+    tbody.innerHTML = '';
+    (data.matched_rows || []).forEach(row => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td><span class="badge badge-${row.source === 'GHP' ? 'fixed' : 'clean'}">${esc(row.source)}</span></td>
+        <td><code>${esc(row.transaction_id)}</code></td>
+        <td>${esc(row.event_date || '')}</td>
+        <td>${esc(row.entry_date || '')}</td>
+        <td>${esc(row.item_id || '')}</td>
+        <td>${esc(row.item_name || '')}</td>
+      `;
+      tbody.appendChild(tr);
+    });
+
+    if ((data.matched_rows || []).length > 0) {
+      show('detail-results');
+    }
+
+    const sheetBtn = document.getElementById('btn-open-sheet');
+    if (data.sheet_url) {
+      sheetBtn.href = data.sheet_url;
+      sheetBtn.classList.remove('hidden');
+    } else {
+      sheetBtn.classList.add('hidden');
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // New run
+  // -------------------------------------------------------------------------
+  document.getElementById('btn-new-run').addEventListener('click', () => {
+    hide('panel-results');
+    // Reset
+    document.getElementById('raw-input').value = '';
+    document.getElementById('date-from').value = '';
+    document.getElementById('date-to').value = '';
+    document.getElementById('btn-submit').disabled = true;
+    hide('result-success-msg');
+    hide('result-warn-msg');
+    hide('result-error-msg');
+    hide('btn-open-sheet');
+    previewData = null;
+    show('panel-input');
+    setStep(1);
+  });
+
+  // -------------------------------------------------------------------------
+  // HTML escaping
+  // -------------------------------------------------------------------------
+  function esc(str) {
+    return String(str ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+</script>
+</body>
+</html>

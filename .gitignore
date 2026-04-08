@@ -1,0 +1,5 @@
+credentials.json
+output_march2026.csv
+runs.log
+__pycache__/
+.pytest_cache/
