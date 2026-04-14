@@ -195,6 +195,7 @@ def submit():
     date_from = data.get("date_from", "").strip()
     date_to = data.get("date_to", "").strip()
     manual_overrides = data.get("manual_overrides", {})  # {original_id: corrected_id}
+    lookback_days = int(data.get("lookback_days", 90))
 
     if not rows:
         return jsonify({"error": "No rows to process"}), 400
@@ -248,12 +249,23 @@ def submit():
 
     # Step 2: Run reconciliation
     try:
-        matched_rows = run_reconciliation(date_from, date_to, run_date=run_date)
+        matched_rows = run_reconciliation(date_from, date_to, run_date=run_date, lookback_days=lookback_days)
     except Exception as e:
         logger.error(f"BQ reconciliation failed: {e}")
         return jsonify({"error": f"BigQuery reconciliation failed: {e}"}), 500
 
     matched_ids = {r["transaction_id"] for r in matched_rows}
+
+    # Build lookup from cleaned ID → original Rakuten transaction status
+    id_to_txn_status = {}
+    for row in rows:
+        cleaned = row.get("_cleaned_id", "")
+        if cleaned:
+            id_to_txn_status[cleaned] = row.get("Status", "")
+
+    # Enrich matched_rows with the Rakuten transaction status
+    for mr in matched_rows:
+        mr["transaction_status"] = id_to_txn_status.get(mr["transaction_id"], "")
 
     # Step 3: Write to Sheets
     sheets_error = None

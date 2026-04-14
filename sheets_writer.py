@@ -57,13 +57,18 @@ def write_results(
     """
     tab = _tab_name(run_date)
 
-    # Build output rows with Status populated
+    # Build output rows — preserve original Rakuten "Status" as
+    # "Transaction Status" and add a separate "Match Status" column.
     output_rows = []
     for row in input_rows:
         order_id = row.get("Order ID", "").strip()
-        status = "Matched" if order_id in matched_ids else "Unmatched"
+        match_status = "Matched" if order_id in matched_ids else "Unmatched"
         out = dict(row)
-        out["Status"] = status
+        # Preserve original Rakuten status (e.g. "Live Transaction", "On Hold", "Cancellation")
+        out["Transaction Status"] = row.get("Status", "")
+        out["Match Status"] = match_status
+        # Remove the original "Status" key to avoid ambiguity
+        out.pop("Status", None)
         output_rows.append(out)
 
     logger.info(f"write_results: sheet_id={SHEET_ID} tab={tab} rows={len(output_rows)}")
@@ -96,10 +101,11 @@ def write_results(
             return tab, sheet_url
 
         headers = list(output_rows[0].keys())
-        # Ensure Status is first column
-        if "Status" in headers:
-            headers.remove("Status")
-        headers = ["Status"] + headers
+        # Ensure Match Status and Transaction Status are the first two columns
+        for col in ("Transaction Status", "Match Status"):
+            if col in headers:
+                headers.remove(col)
+        headers = ["Match Status", "Transaction Status"] + headers
 
         data = [headers]
         for row in output_rows:

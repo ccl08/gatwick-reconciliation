@@ -5,7 +5,7 @@ Pushes cleaned IDs to BQ and runs reconciliation queries against both tables.
 
 import logging
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 from google.cloud import bigquery
 from google.oauth2 import service_account
 
@@ -116,9 +116,29 @@ def push_ids_to_bq(
     return table_id
 
 
-def _build_recon_query(bq_table_id: str, date_from: str, date_to: str) -> str:
-    """Build the reconciliation SQL against the consolidated parking data table."""
+def _build_recon_query(
+    bq_table_id: str,
+    date_from: str,
+    date_to: str,
+    lookback_days: int = 90,
+) -> str:
+    """Build the reconciliation SQL against the consolidated parking data table.
+
+    lookback_days: extend the start of the date window backwards by this many days
+    to capture transactions booked before the inquiry period.  Set to 0 to use
+    the exact date range, or -1 to disable the date filter entirely (match on ID only).
+    """
     parking_table = f"{PROJECT}.{RECON_DATASET}.gatwick_parking_data"
+
+    if lookback_days < 0:
+        # No date filter — let the ID join drive the match
+        date_clause = ""
+    else:
+        # Extend the lookback window before date_from
+        start = datetime.strptime(date_from, "%Y%m%d") - timedelta(days=lookback_days)
+        extended_from = start.strftime("%Y%m%d")
+        date_clause = f'WHERE pd.event_date BETWEEN "{extended_from}" AND "{date_to}"'
+
     return f"""
 SELECT
     pd.event_date,
@@ -131,8 +151,7 @@ INNER JOIN
     `{bq_table_id}` AS validation_ids
 ON
     pd.transaction_id = validation_ids.transaction_id
-WHERE
-    pd.event_date BETWEEN "{date_from}" AND "{date_to}"
+{date_clause}
 """
 
 
@@ -140,17 +159,20 @@ def run_reconciliation(
     date_from: str,
     date_to: str,
     run_date: datetime | None = None,
+    lookback_days: int = 90,
 ) -> list[dict]:
     """
     Run reconciliation against both GHP and Main site GA4 tables.
     Returns combined list of matched rows as dicts.
 
     date_from / date_to: YYYYMMDD strings
+    lookback_days: how many extra days before date_from to search (default 90).
+                   Set to -1 to disable date filtering entirely.
     """
     client = _get_client()
     bq_table_id = _destination_table_id(run_date)
 
-    sql = _build_recon_query(bq_table_id, date_from, date_to)
+    sql = _build_recon_query(bq_table_id, date_from, date_to, lookback_days)
     logger.info("Running reconciliation against gatwick_parking_data")
 
     try:
