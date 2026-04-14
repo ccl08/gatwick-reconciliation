@@ -28,39 +28,6 @@ app.secret_key = os.urandom(24)
 
 REQUIRED_FIELDS = {"Order ID"}
 
-# Possible names for the Rakuten transaction-status column, checked in order.
-# The first match (case-insensitive) wins.
-_STATUS_COLUMN_CANDIDATES = [
-    "Status",
-    "Transaction Status",
-    "Approval Status",
-    "Txn Status",
-    "Order Status",
-]
-
-
-def _find_status_key(row: dict) -> str | None:
-    """Return the actual key in *row* that represents the Rakuten status column.
-
-    Tries each candidate name with a case-insensitive match against the row's
-    keys.  Returns the key as it appears in the dict, or None.
-    """
-    # Build a lowercase → original-key lookup (once per call, rows are small)
-    lower_map = {k.lower().strip(): k for k in row if not k.startswith("_")}
-    for candidate in _STATUS_COLUMN_CANDIDATES:
-        real_key = lower_map.get(candidate.lower())
-        if real_key is not None:
-            return real_key
-    return None
-
-
-def _get_status_value(row: dict) -> str:
-    """Extract the Rakuten transaction-status value from *row*, tolerating
-    column-name variations and case differences.  Returns '' if not found."""
-    key = _find_status_key(row)
-    return row.get(key, "") if key else ""
-
-
 # ---------------------------------------------------------------------------
 # Parsing helpers
 # ---------------------------------------------------------------------------
@@ -289,43 +256,18 @@ def submit():
 
     matched_ids = {r["transaction_id"] for r in matched_rows}
 
-    # --- Diagnostic logging: dump the first row so we can see every column ---
+    # --- Diagnostic logging ---
     if rows:
         first = rows[0]
         visible_keys = {k: v for k, v in first.items() if not k.startswith("_")}
-        logger.info("DIAG first row keys+values: %s", visible_keys)
-        status_key = _find_status_key(first)
-        logger.info(
-            "DIAG detected status column: %s (value=%r)",
-            status_key,
-            first.get(status_key, "<N/A>") if status_key else "<NOT FOUND>",
-        )
+        logger.info("DIAG first input row keys+values: %s", visible_keys)
+    if matched_rows:
+        logger.info("DIAG first matched_row: %s", matched_rows[0])
 
-    # Build lookup from cleaned ID → original Rakuten transaction status.
-    # Key on BOTH the cleaned ID and the original Order ID so lookups work
-    # regardless of which form is used.
-    id_to_txn_status = {}
-    for row in rows:
-        rakuten_status = _get_status_value(row)
-        cleaned = row.get("_cleaned_id", "")
-        original = row.get("Order ID", "").strip()
-        if cleaned:
-            id_to_txn_status[cleaned] = rakuten_status
-        if original and original != cleaned:
-            id_to_txn_status[original] = rakuten_status
-
-    logger.info(
-        "DIAG id_to_txn_status first 5: %s",
-        list(id_to_txn_status.items())[:5],
-    )
-    logger.info(
-        "DIAG matched_rows first 5 transaction_ids: %s",
-        [r["transaction_id"] for r in matched_rows[:5]],
-    )
-
-    # Enrich matched_rows with the Rakuten transaction status
-    for mr in matched_rows:
-        mr["transaction_status"] = id_to_txn_status.get(mr["transaction_id"], "")
+    # Transaction status now comes from BQ (gatwick_aggregated_data.cancellation_status).
+    # Build a lookup keyed on cleaned ID so sheets_writer can map Order ID → status.
+    id_to_txn_status = {r["transaction_id"]: r.get("transaction_status", "") for r in matched_rows}
+    logger.info("DIAG id_to_txn_status first 5: %s", list(id_to_txn_status.items())[:5])
 
     # Step 3: Write to Sheets
     sheets_error = None
@@ -338,16 +280,17 @@ def submit():
             for row in rows
         ]
 
-        # Build a mapping from Order ID → cleaned ID so write_results can
-        # match original Order IDs against the cleaned matched_ids set,
-        # and from Order ID → Rakuten transaction status.
+        # Map original Order ID → cleaned ID so write_results can match
+        # original IDs against the cleaned matched_ids set, and
+        # Order ID → BQ transaction status.
         order_id_to_cleaned = {}
         order_id_to_status = {}
         for row in rows:
             orig = row.get("Order ID", "").strip()
+            cleaned = row.get("_cleaned_id", orig)
             if orig:
-                order_id_to_cleaned[orig] = row.get("_cleaned_id", orig)
-                order_id_to_status[orig] = _get_status_value(row)
+                order_id_to_cleaned[orig] = cleaned
+                order_id_to_status[orig] = id_to_txn_status.get(cleaned, "")
 
         logger.info("DIAG order_id_to_status first 5: %s", list(order_id_to_status.items())[:5])
 

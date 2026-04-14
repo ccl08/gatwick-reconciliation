@@ -129,12 +129,11 @@ def _build_recon_query(
     the exact date range, or -1 to disable the date filter entirely (match on ID only).
     """
     parking_table = f"{PROJECT}.{RECON_DATASET}.gatwick_parking_data"
+    agg_table = f"{PROJECT}.{RECON_DATASET}.gatwick_aggregated_data"
 
     if lookback_days < 0:
-        # No date filter — let the ID join drive the match
         date_clause = ""
     else:
-        # Extend the lookback window before date_from
         start = datetime.strptime(date_from, "%Y%m%d") - timedelta(days=lookback_days)
         extended_from = start.strftime("%Y%m%d")
         date_clause = f'WHERE pd.event_date BETWEEN "{extended_from}" AND "{date_to}"'
@@ -144,13 +143,18 @@ SELECT
     pd.event_date,
     pd.entry_date,
     pd.transaction_id,
-    pd.item_category
+    pd.item_category,
+    IFNULL(agg.cancellation_status, '') AS transaction_status
 FROM
     `{parking_table}` AS pd
 INNER JOIN
     `{bq_table_id}` AS validation_ids
 ON
     pd.transaction_id = validation_ids.transaction_id
+LEFT JOIN
+    `{agg_table}` AS agg
+ON
+    pd.transaction_id = agg.transaction_id
 {date_clause}
 """
 
@@ -187,6 +191,7 @@ def run_reconciliation(
                 "entry_date": row.entry_date,
                 "transaction_id": row.transaction_id,
                 "item_category": row.item_category,
+                "transaction_status": row.transaction_status,
             })
     except Exception as e:
         logger.error(f"BQ reconciliation query failed: {e}")
