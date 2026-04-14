@@ -67,8 +67,10 @@ def write_results(
 
     tab = _tab_name(run_date)
 
-    # Build output rows — preserve original Rakuten "Status" as
+    # Build output rows — preserve original Rakuten status as
     # "Transaction Status" and add a separate "Match Status" column.
+    from app import _find_status_key, _get_status_value
+
     output_rows = []
     for row in input_rows:
         order_id = row.get("Order ID", "").strip()
@@ -77,14 +79,17 @@ def write_results(
         match_status = "Matched" if cleaned_id in matched_ids else "Unmatched"
         out = dict(row)
         # Get Rakuten transaction status: prefer the authoritative map,
-        # fall back to the row's own "Status" field.
+        # fall back to the row's own status column (whatever it's called).
         out["Transaction Status"] = (
             order_id_to_status.get(order_id)
-            or row.get("Status", "")
+            or _get_status_value(row)
         )
         out["Match Status"] = match_status
-        # Remove the original "Status" key to avoid ambiguity
-        out.pop("Status", None)
+        # Remove the original status column (whatever its name) to avoid
+        # it appearing twice in the output.
+        orig_status_key = _find_status_key(row)
+        if orig_status_key:
+            out.pop(orig_status_key, None)
         output_rows.append(out)
 
     logger.info(f"write_results: sheet_id={SHEET_ID} tab={tab} rows={len(output_rows)}")

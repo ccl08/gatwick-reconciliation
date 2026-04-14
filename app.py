@@ -28,6 +28,38 @@ app.secret_key = os.urandom(24)
 
 REQUIRED_FIELDS = {"Order ID"}
 
+# Possible names for the Rakuten transaction-status column, checked in order.
+# The first match (case-insensitive) wins.
+_STATUS_COLUMN_CANDIDATES = [
+    "Status",
+    "Transaction Status",
+    "Approval Status",
+    "Txn Status",
+    "Order Status",
+]
+
+
+def _find_status_key(row: dict) -> str | None:
+    """Return the actual key in *row* that represents the Rakuten status column.
+
+    Tries each candidate name with a case-insensitive match against the row's
+    keys.  Returns the key as it appears in the dict, or None.
+    """
+    # Build a lowercase → original-key lookup (once per call, rows are small)
+    lower_map = {k.lower().strip(): k for k in row if not k.startswith("_")}
+    for candidate in _STATUS_COLUMN_CANDIDATES:
+        real_key = lower_map.get(candidate.lower())
+        if real_key is not None:
+            return real_key
+    return None
+
+
+def _get_status_value(row: dict) -> str:
+    """Extract the Rakuten transaction-status value from *row*, tolerating
+    column-name variations and case differences.  Returns '' if not found."""
+    key = _find_status_key(row)
+    return row.get(key, "") if key else ""
+
 
 # ---------------------------------------------------------------------------
 # Parsing helpers
@@ -257,12 +289,24 @@ def submit():
 
     matched_ids = {r["transaction_id"] for r in matched_rows}
 
+    # --- Diagnostic logging: dump the first row so we can see every column ---
+    if rows:
+        first = rows[0]
+        visible_keys = {k: v for k, v in first.items() if not k.startswith("_")}
+        logger.info("DIAG first row keys+values: %s", visible_keys)
+        status_key = _find_status_key(first)
+        logger.info(
+            "DIAG detected status column: %s (value=%r)",
+            status_key,
+            first.get(status_key, "<N/A>") if status_key else "<NOT FOUND>",
+        )
+
     # Build lookup from cleaned ID → original Rakuten transaction status.
     # Key on BOTH the cleaned ID and the original Order ID so lookups work
     # regardless of which form is used.
     id_to_txn_status = {}
     for row in rows:
-        rakuten_status = row.get("Status", "")
+        rakuten_status = _get_status_value(row)
         cleaned = row.get("_cleaned_id", "")
         original = row.get("Order ID", "").strip()
         if cleaned:
@@ -271,11 +315,11 @@ def submit():
             id_to_txn_status[original] = rakuten_status
 
     logger.info(
-        "id_to_txn_status first 5 keys: %s",
+        "DIAG id_to_txn_status first 5: %s",
         list(id_to_txn_status.items())[:5],
     )
     logger.info(
-        "matched_rows first 5 transaction_ids: %s",
+        "DIAG matched_rows first 5 transaction_ids: %s",
         [r["transaction_id"] for r in matched_rows[:5]],
     )
 
@@ -303,7 +347,9 @@ def submit():
             orig = row.get("Order ID", "").strip()
             if orig:
                 order_id_to_cleaned[orig] = row.get("_cleaned_id", orig)
-                order_id_to_status[orig] = row.get("Status", "")
+                order_id_to_status[orig] = _get_status_value(row)
+
+        logger.info("DIAG order_id_to_status first 5: %s", list(order_id_to_status.items())[:5])
 
         tab_name, sheet_url = write_results(
             clean_rows,
