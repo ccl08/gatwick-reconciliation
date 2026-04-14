@@ -55,7 +55,8 @@ def parse_tsv_or_csv(text: str) -> list[dict]:
     Parse pasted tab-separated or comma-separated data.
     First row is treated as headers.
     """
-    text = text.strip()
+    # Strip BOM (common in Excel CSV exports) so the first column header is clean
+    text = text.lstrip("\ufeff").strip()
     if not text:
         return []
 
@@ -256,12 +257,27 @@ def submit():
 
     matched_ids = {r["transaction_id"] for r in matched_rows}
 
-    # Build lookup from cleaned ID → original Rakuten transaction status
+    # Build lookup from cleaned ID → original Rakuten transaction status.
+    # Key on BOTH the cleaned ID and the original Order ID so lookups work
+    # regardless of which form is used.
     id_to_txn_status = {}
     for row in rows:
+        rakuten_status = row.get("Status", "")
         cleaned = row.get("_cleaned_id", "")
+        original = row.get("Order ID", "").strip()
         if cleaned:
-            id_to_txn_status[cleaned] = row.get("Status", "")
+            id_to_txn_status[cleaned] = rakuten_status
+        if original and original != cleaned:
+            id_to_txn_status[original] = rakuten_status
+
+    logger.info(
+        "id_to_txn_status first 5 keys: %s",
+        list(id_to_txn_status.items())[:5],
+    )
+    logger.info(
+        "matched_rows first 5 transaction_ids: %s",
+        [r["transaction_id"] for r in matched_rows[:5]],
+    )
 
     # Enrich matched_rows with the Rakuten transaction status
     for mr in matched_rows:
@@ -277,7 +293,25 @@ def submit():
             {k: v for k, v in row.items() if not k.startswith("_")}
             for row in rows
         ]
-        tab_name, sheet_url = write_results(clean_rows, matched_ids, run_date=run_date)
+
+        # Build a mapping from Order ID → cleaned ID so write_results can
+        # match original Order IDs against the cleaned matched_ids set,
+        # and from Order ID → Rakuten transaction status.
+        order_id_to_cleaned = {}
+        order_id_to_status = {}
+        for row in rows:
+            orig = row.get("Order ID", "").strip()
+            if orig:
+                order_id_to_cleaned[orig] = row.get("_cleaned_id", orig)
+                order_id_to_status[orig] = row.get("Status", "")
+
+        tab_name, sheet_url = write_results(
+            clean_rows,
+            matched_ids,
+            run_date=run_date,
+            order_id_to_cleaned=order_id_to_cleaned,
+            order_id_to_status=order_id_to_status,
+        )
     except Exception as e:
         sheets_error = str(e)
         logger.error(f"Sheets write failed: {e}")

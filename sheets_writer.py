@@ -44,17 +44,27 @@ def write_results(
     input_rows: list[dict],
     matched_ids: set[str],
     run_date: datetime | None = None,
+    order_id_to_cleaned: dict[str, str] | None = None,
+    order_id_to_status: dict[str, str] | None = None,
 ) -> str:
     """
     Write reconciliation results to Google Sheets.
 
     - Creates a new tab named Output_[Month][Year]
     - Copies all original Rakuten columns
-    - Populates the Status column: Matched / Unmatched
+    - Adds Match Status (Matched / Unmatched) and Transaction Status columns
+
+    order_id_to_cleaned: maps original Order ID → cleaned ID (used for matching)
+    order_id_to_status:  maps original Order ID → Rakuten transaction status
 
     Returns the tab name written to, or raises RuntimeError on failure.
     Falls back to CSV if Sheets write fails.
     """
+    if order_id_to_cleaned is None:
+        order_id_to_cleaned = {}
+    if order_id_to_status is None:
+        order_id_to_status = {}
+
     tab = _tab_name(run_date)
 
     # Build output rows — preserve original Rakuten "Status" as
@@ -62,10 +72,16 @@ def write_results(
     output_rows = []
     for row in input_rows:
         order_id = row.get("Order ID", "").strip()
-        match_status = "Matched" if order_id in matched_ids else "Unmatched"
+        # Use the cleaned ID for matching (handles auto-fixed IDs like LGW→GHP)
+        cleaned_id = order_id_to_cleaned.get(order_id, order_id)
+        match_status = "Matched" if cleaned_id in matched_ids else "Unmatched"
         out = dict(row)
-        # Preserve original Rakuten status (e.g. "Live Transaction", "On Hold", "Cancellation")
-        out["Transaction Status"] = row.get("Status", "")
+        # Get Rakuten transaction status: prefer the authoritative map,
+        # fall back to the row's own "Status" field.
+        out["Transaction Status"] = (
+            order_id_to_status.get(order_id)
+            or row.get("Status", "")
+        )
         out["Match Status"] = match_status
         # Remove the original "Status" key to avoid ambiguity
         out.pop("Status", None)
